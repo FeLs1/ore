@@ -6,6 +6,7 @@ mod claim;
 mod close;
 mod config;
 mod cu_limits;
+mod dynamic_fee;
 #[cfg(feature = "admin")]
 mod initialize;
 mod mine;
@@ -15,7 +16,6 @@ mod send_and_confirm;
 mod stake;
 mod upgrade;
 mod utils;
-mod dynamic_fee;
 
 use std::sync::Arc;
 
@@ -32,6 +32,7 @@ struct Miner {
     pub priority_fee: Option<u64>,
     pub dynamic_fee_url: Option<String>,
     pub dynamic_fee_strategy: Option<String>,
+    pub dynamic_fee_priority: Option<String>,
     pub dynamic_fee_max: Option<u64>,
     pub rpc_client: Arc<RpcClient>,
     pub fee_payer_filepath: Option<String>,
@@ -130,7 +131,7 @@ struct Args {
     #[arg(
         long,
         value_name = "DYNAMIC_FEE_STRATEGY",
-        help = "Strategy to use for dynamic fee estimation. Must be one of 'helius', or 'triton'.",
+        help = "Strategy to use for dynamic fee estimation. Must be one of 'helius', 'triton', or 'quicknode'.",
         default_value = "helius",
         global = true
     )]
@@ -143,7 +144,14 @@ struct Args {
         global = true
     )]
     dynamic_fee_max: Option<u64>,
-    
+    #[arg(
+        long,
+        value_name = "DYNAMIC_FEE_PRIORITY",
+        help = "Percentile for quicknode.  Ignored for other strategies. Must be one of extreme, high, medium, or low.  Maps to 95th, 80th, 60th, and 40th percentiles, respectively.",
+        default_value = "medium",
+        global = true
+    )]
+    dynamic_fee_priority: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -168,7 +176,9 @@ async fn main() {
     // Initialize miner.
     let cluster = args.rpc.unwrap_or(cli_config.json_rpc_url);
     let default_keypair = args.keypair.unwrap_or(cli_config.keypair_path.clone());
-    let fee_payer_filepath = args.fee_payer_filepath.unwrap_or(cli_config.keypair_path.clone());
+    let fee_payer_filepath = args
+        .fee_payer_filepath
+        .unwrap_or(cli_config.keypair_path.clone());
     let rpc_client = RpcClient::new_with_commitment(cluster, CommitmentConfig::confirmed());
 
     let miner = Arc::new(Miner::new(
@@ -177,6 +187,7 @@ async fn main() {
         Some(default_keypair),
         args.dynamic_fee_url,
         args.dynamic_fee_strategy,
+        args.dynamic_fee_priority,
         args.dynamic_fee_max,
         Some(fee_payer_filepath),
     ));
@@ -227,6 +238,7 @@ impl Miner {
         keypair_filepath: Option<String>,
         dynamic_fee_url: Option<String>,
         dynamic_fee_strategy: Option<String>,
+        dynamic_fee_priority: Option<String>,
         dynamic_fee_max: Option<u64>,
         fee_payer_filepath: Option<String>,
     ) -> Self {
@@ -236,8 +248,9 @@ impl Miner {
             priority_fee,
             dynamic_fee_url,
             dynamic_fee_strategy,
+            dynamic_fee_priority,
             dynamic_fee_max,
-            fee_payer_filepath
+            fee_payer_filepath,
         }
     }
 
