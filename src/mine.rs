@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{str::FromStr, sync::Arc, time::Instant};
 
 use colored::*;
 use drillx::{
@@ -25,6 +25,10 @@ impl Miner {
     pub async fn mine(&self, args: MineArgs) {
         // Register, if needed.
         let signer = self.signer();
+        let proof_authority = args
+            .proof_authority
+            .and_then(|ref s| Pubkey::from_str(s).ok())
+            .unwrap_or(signer.pubkey());
         self.open().await;
 
         // Check num threads
@@ -58,7 +62,7 @@ impl Miner {
             }
             ixs.push(ore_api::instruction::mine(
                 signer.pubkey(),
-                signer.pubkey(),
+                proof_authority,
                 find_bus(),
                 solution,
             ));
